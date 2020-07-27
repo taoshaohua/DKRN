@@ -1,0 +1,258 @@
+import pickle
+import collections
+import json
+import gensim
+import pymysql
+import collections
+from numpy import *
+import pickle
+import numpy as np
+import json
+import random
+import cmath
+
+class Envionment:
+    def __init__(self):
+        self.currId = []
+    def getUserId(self,userId):
+        db = pymysql.connect("localhost", "root", "root", "testbook2")
+        cursor = db.cursor()
+        sql = "select collect_tags from user where user_id='" + userId + "'"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        colist = {}
+        for row in results:
+            coll = row[0]  # str类型
+            # colist = json.loads(coll.replace("'", "\""))  # json loads 将str转换为字典格式, 将用户看过的电影id 取出。
+            colist=json.loads(coll)
+        # print(colist)
+        UCMid = list(colist.keys())  # 用户读过的书id 集合。
+        # print("UCMID",UCMid)
+        return UCMid
+    def getUserBook(self,userid):  #用户已读过的书信息分类，如id: 作者，出版社，评分，ISBN等
+        userId = self.getUserId(userid)
+        db = pymysql.connect("localhost", "root", "root", "testbook2")
+        CollectMovie = collections.defaultdict(list)
+        cursor = db.cursor()
+        for i in userId:
+            sql = "select book_id,author,publisher,rate,ISBN from newbook where book_id=%s" % (i)  # 格式化输出
+            cursor.execute(sql)
+            results = cursor.fetchall()
+            information = {}
+            for row in results:
+                information['author'] = []
+                author = row[1].split("/")
+                for di in author:
+                    di = str.strip(di)
+                    information['author'].append(di)
+                    # print(information['director'])
+                information['publisher'] = []
+                publisher = row[2].split("/")
+                for ac in publisher:
+                    ac = str.strip(ac)
+                    information['publisher'].append(ac)
+                information['rate'] = []
+                rate = row[3].split("/")
+                for tc in rate:
+                    tc = str.strip(tc)
+                    information['rate'].append(tc)
+                information['ISBN'] = []
+                ISBN = row[4].split("/")
+                for coun in ISBN:
+                    coun = str.strip(coun)
+                    information['ISBN'].append(coun)
+                    CollectMovie[i] = information
+        # print("collectmovie", CollectMovie)
+        return CollectMovie
+    def getUserWishBook(self,userId):  #用户想看的电影id集合
+        db = pymysql.connect("localhost", "root", "root", "testbook2")
+        cursor = db.cursor()
+        sql = "select wish_tags from user where user_id='"+userId+"'"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        colist = {}
+        for row in results:
+            coll = row[0]  # str类型
+            # colist = json.loads(coll.replace("'", "\""))  # json loads 将str转换为字典格式, 将用户看过的电影id 取出。
+            colist=json.loads(coll)
+        # print(colist)
+        UserWishBook = list(colist.keys())  # 用户想看的电影id 集合。
+        UserWishBook=UserWishBook[:5]
+        # print("userwishMovie",UserWishBook)
+        return UserWishBook
+    def getAllBook(self):  #全部电影信息，根据id分类
+        db = pymysql.connect("localhost", "root", "root", "testbook2")
+        cursor = db.cursor()
+        sql = "select book_id,author,publisher,rate,ISBN from newbook" #movienew
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        AllBook = collections.defaultdict(list)
+        # with open("information","wb")as f: 这个是操作文本内容的时候用的。
+        # pickle是对数据进行序列化，反序列化用的，永久存储。
+        for row in results:
+            inoformation = {}
+            book_id = row[0]
+            # id = int(id)
+            authorinfo = row[1].split("/")  # inoformation['director'] = row[1].split("/") # split 返回分割后的字符串列表
+            inoformation['author'] = []
+            for info in authorinfo:
+                info = str.strip(info)
+                inoformation['author'].append(info)
+            # print(inoformation['director'])
+            publisherinfo = row[2].split("/")  # inoformation['actor']=row[2].split("/")
+            inoformation['publisher'] = []
+            for actor in publisherinfo:
+                actor = str.strip(actor)
+                inoformation['publisher'].append(actor)
+            # print(inoformation['actor'])
+            inoformation['rate'] = []
+            rateinfo = row[3].split("/")  # 等同于：inoformation['type']=row[3].split("/")
+            # print(typeinfo)
+            for v in rateinfo:  #
+                v = str.strip(v)
+                inoformation['rate'].append(v)
+            # print(inoformation['type'])
+            ISBNinfo = row[4].split("/")
+            inoformation['ISBN'] = []
+            for country in ISBNinfo:
+                country = str.strip(country)
+                inoformation['ISBN'].append(country)
+            # print(inoformation['country'])
+            AllBook[book_id] = inoformation  # id 为key, information为value.
+        # print("AllMovieList", AllBook)
+        # output = open('idinformation.data', 'wb')
+        # pickle.dump(data, output)
+        # print("processing...")
+        return AllBook
+    def getBookvalue(self): #全部电影的向量值, id:向量值，以字典方式存储的
+        f = open("BookValue.data", 'rb')
+        BookValue = pickle.load(f)
+        f.close()
+        return BookValue
+    def step(self,action,next,userId):
+        if next in self.getUserBook(userId).keys():
+            infor = self.getUserBook(userId)[next]
+        else:
+            infor = self.getAllBook()[next]
+        author = infor['author']
+        # print('作者',author)
+        publisher=infor['publisher']
+        # print('出版社',publisher)
+        rate = infor['rate']
+        # print('评分',rate)
+        ISBN = infor['ISBN']
+        AllBook = self.getAllBook()
+        LocalBookList = collections.defaultdict(list)
+        if action == 0:
+            # print('作者', action)
+            for key, val in AllBook.items():
+                for value in author:
+                    if value in val['author']:  # 同一导演的,导演中会出现只有一个导演的情况，这种
+                        LocalBookList[value].append(key)  # {'张艺谋': ['4864908', '1306505', '1292365']}
+        # elif action == 1:
+        #     # print('出版社', action)
+        #     for key, val in AllBook.items():
+        #         for a1 in publisher:  # 同一演员的，{'古天乐': ['25858785', '26035290'], '廖启智': ['26425063'], '张松枝': ['26425063']})
+        #             if a1 in val['publisher']:
+        #                 LocalBookList[a1].append(key)
+        # elif action == 2:
+        #     # print('评分', action)
+        #     for key, val in AllBook.items():
+        #         for re in rate:  # 同一演员的，{'古天乐': ['25858785', '26035290'], '廖启智': ['26425063'], '张松枝': ['26425063']})
+        #             if re in val['rate']:
+        #                 LocalBookList[re].append(key)
+        # else:
+        #     # print("ISBN",action)
+        #     for key, val in AllBook.items():
+        #         for ib in ISBN:
+        #             if ib in val['ISBN']:
+        #                 LocalBookList[ib].append(key)
+        UserWishbook = self.getUserWishBook(userId)  # 用户想看的电影集合（3）用户想看的电影集合, 这儿要加一个判断吧？？？？，若用户想看的电影为空，则break, 否则，程序会陷入死循环
+        if len(UserWishbook) == 0:
+            # print("想看书为0");
+            nextstate = -1
+            reward = 0
+            action = 0
+            done = False
+            # print("ffffff", nextstate, action, reward, done)
+            return nextstate, action, reward, done
+        if len(LocalBookList)>0:
+            for key,value in LocalBookList.items():
+                # print("Localbookkey=",key+","+ "Localbookvalue=",value)# key为导演，演员，国家或类型的名字，value为电影id
+                for v in value: #对电影id进行遍历
+                    # print(v)
+                    if v in UserWishbook:
+                        reward = 1
+                        done = True
+                        nextstate=v
+                        # print(nextstate)
+                        return nextstate, action, reward, done
+            nextstate = self.getNextState(next, LocalBookList)
+            reward = 0
+            action = 0
+            done = False
+            # print("rrrrr", nextstate, action, reward, done)
+            return nextstate, action, reward, done
+        else:
+            done = False
+            reward = 0
+            action = action + 1  # 为什么用action+1呢？，选下一条边
+            nextstate = next  # 指向它自己（1）指向它自己, 这儿有问题。？？？？？？ recommend_list1 ['25964071', '27605698', '25964071', '27605698']，就在两个值上循环，不再往下走。
+            if action > 3:  # 循环加超过3,还是没有下一个点，再重选一个用户。
+                nextstate = random.choice(list(self.getUserBook(userId)))  # 此处有env.getUserMovie()改为self.getUserMovie()
+                action = 0
+            # print("bbbbbbbbb", nextstate, action, reward, done)
+            return nextstate, action, reward, done
+        # print("locallist is", LocalBookList)
+        if nextstate in UserWishbook:
+            reward = 1
+            done = True
+            # print('reward1', reward)
+        else:
+            reward = 0
+            done = False
+            # print('reward2', reward)
+        return nextstate,reward,done
+    def getNextState(self,bookId, bookList):
+        BookValue = self.getBookvalue()
+        key1=BookValue[bookId]
+        A = 0.0
+        SumA = 0.0
+        for k1 in key1:
+            SumA = SumA + k1 * k1
+        A = np.sqrt(SumA)
+        SumB = 0.0
+        B = 0.0
+        Maxstate = collections.defaultdict(list)  # 这儿是空值
+        # 1.计算前先进行查询，看最大值有否在字典中，若有，则不用计算，直接取，否则计算。
+        # print("LocalMovieList size", len(bookList))  # 若只有一个值，如导演
+        for books in bookList.values():  #
+            # print("moviesvalues",movies)
+            for book in books:
+                # print("movie=\'",movie,"\'")
+                # print("Maxstate",Maxstate)
+                if book in Maxstate.keys() and Maxstate[book]>0:
+                    Maxstate[book]=Maxstate[book]*1.5
+                else:
+                    if book in BookValue and book != bookId and book not in self.currId:  # 这儿有问题???  避免节点只选它自己，如果它也在全部电影中，则与它自己的匹配值最大，总是选它自己，但是总是循环为一个nextstate['27615233', '20356411']
+                        key2 = BookValue[book]
+                        for k2 in key2:
+                            SumB = SumB + k2 * k2
+                        B = np.sqrt(SumB)
+                        x = np.dot(np.array(key1), np.array(key2)) / A * B
+                        Maxstate[book] = x
+                        self.currId.append(book)
+                    else:
+                        print("error")
+                # print('max',Maxstate)  # 结果：max defaultdict(<class 'list'>, {'4864908': 0.061599999999999995, '1306505': 0.454, '1292365': 0.1108})
+                if len(Maxstate) == 0:
+                    return 0
+                nextstate = max(Maxstate, key=Maxstate.get)
+                # print('nextstate is', nextstate)
+                return nextstate
+
+
+
+
+
+
